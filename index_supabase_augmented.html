@@ -1,0 +1,1151 @@
+\
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>歯科治療計画書システム（Supabase増補版・完全）</title>
+
+  <!-- libs -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,'Noto Sans JP',sans-serif; margin:0; background:#f5f5f5; font-size:14px; -webkit-font-smoothing:antialiased; padding-bottom:90px; }
+    h1,h2,h3 { margin:0; }
+
+    .main-container { display:flex; height:calc(100vh - 90px); overflow:hidden; }
+    .left-panel { width:42%; min-width:320px; background:#f8f9fa; overflow-y:auto; border-right:2px solid #ddd; position:relative; }
+    .right-panel { flex:1; overflow-y:auto; background:#fff; }
+    .panel-header { position:sticky; top:0; background:#fff; padding:14px; border-bottom:1px solid #ddd; z-index:20; box-shadow:0 2px 4px rgba(0,0,0,.06); }
+
+    .row { display:flex; gap:8px; }
+    .row>*{ flex:1; }
+    .form-group { margin-bottom:10px; }
+    label { display:block; font-weight:600; font-size:12px; color:#555; margin-bottom:4px; }
+    input[type="text"], input[type="date"], textarea, select { width:100%; padding:8px 10px; border:1px solid #ddd; border-radius:6px; font-size:13px; background:#fff; }
+    textarea { resize:vertical; min-height:72px; }
+
+    .tab-navigation { display:flex; gap:4px; background:#f5f5f5; border-bottom:2px solid #ddd; position:sticky; top:56px; z-index:10; padding:0 8px; }
+    .tab-btn { padding:10px 18px; border:none; background:transparent; cursor:pointer; font-weight:600; color:#666; border-bottom:3px solid transparent; }
+    .tab-btn.active { color:#1976d2; background:#fff; border-bottom-color:#1976d2; }
+    .tab-content { display:none; padding:16px; }
+    .tab-content.active { display:block; }
+
+    .plan-tabs { display:flex; gap:6px; padding:10px; background:#fafafa; border-bottom:1px solid #ddd; overflow-x:auto; }
+    .plan-tab { padding:8px 14px; border:1px solid #ddd; background:#fff; cursor:pointer; font-size:13px; border-radius:6px 6px 0 0; white-space:nowrap; }
+    .plan-tab.active { background:#fff; border-bottom-color:#fff; position:relative; z-index:1; }
+    .plan-tab.ideal{ border-top:3px solid #FFD700; }
+    .plan-tab.standard{ border-top:3px solid #2196F3; }
+    .plan-tab.insurance{ border-top:3px solid #4CAF50; }
+
+    .section { margin:14px; padding:16px; background:#fff; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+
+    .treatment-header { background:#f7f7f7; padding:10px; border:1px solid #ddd; border-radius:8px; margin-bottom:10px; }
+    .medical-buttons { display:flex; gap:6px; }
+    .tag-btn { padding:6px 12px; border:1px solid #ddd; background:#fff; border-radius:6px; cursor:pointer; font-size:12px; }
+    .tag-btn.selected { background:#ffdddd; border-color:#ff9c9c; }
+
+    table { width:100%; border-collapse:collapse; }
+    th,td { border:1px solid #ddd; padding:8px; vertical-align:top; text-align:left; }
+    th { background:#f5f5f5; font-weight:600; }
+    .treatment-cell { text-align:center; font-weight:700; white-space:nowrap; }
+    .treatment-cell.long { font-size:11px; }
+    .tooth-cell { width:160px; text-align:center; }
+    .free-text-area, .ng-text-input, .multi-line-input { width:100%; padding:6px 8px; border:1px solid #ddd; border-radius:6px; font-size:12px; min-height:40px; }
+
+    /* cross (quadrant) */
+    .cross-wrap { display:flex; align-items:center; gap:6px; justify-content:center; }
+    .cross-display { display:inline-block; width:80px; height:50px; border:1px solid #999; position:relative; margin:2px; background:#fff; }
+    .cross-display:before { content:""; position:absolute; left:0; right:0; top:50%; height:1px; background:#333; transform:translateY(-50%); }
+    .cross-display:after { content:""; position:absolute; top:0; bottom:0; left:50%; width:1px; background:#333; transform:translateX(-50%); }
+    .quadrant { position:absolute; width:50%; height:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; color:#333; }
+    .quadrant.tl{ top:0; left:0; } .quadrant.tr{ top:0; right:0; } .quadrant.bl{ bottom:0; left:0; } .quadrant.br{ bottom:0; right:0; }
+    .quadrant.active { background:rgba(33,150,243,.18); }
+
+    /* images */
+    .gallery-container { display:flex; flex-direction:column; gap:16px; }
+    .gallery-section { border:1px solid #e0e0e0; border-radius:10px; padding:12px; background:#fafafa; position:relative; }
+    .gallery-title { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+    .gallery-title h3 { font-size:14px; color:#333; }
+    .thumbnail-grid { display:grid; gap:10px; }
+    .thumbnail-grid.intraoral5 { grid-template-columns:repeat(3, 1fr); grid-template-rows:repeat(3, 1fr); max-width:495px; margin:0 auto; }
+    .thumbnail-grid.pano1 { grid-template-columns:1fr; }
+    .thumbnail-grid.dental10 { grid-template-columns:repeat(5,1fr); gap:8px; }
+    .thumbnail-grid.bw4 { grid-template-columns:repeat(4,1fr); gap:8px; }
+    .thumbnail { position:relative; aspect-ratio:4/3; background:#f0f0f0; border-radius:6px; overflow:hidden; border:2px dashed #bbb; display:flex; align-items:center; justify-content:center; }
+    .thumbnail.has-image { border-style:solid; border-color:#ddd; }
+    .thumbnail img { width:100%; height:100%; object-fit:cover; pointer-events:none; user-select:none; transform-origin:center center; }
+    .thumbnail-label { position:absolute; left:0; right:0; bottom:0; background:rgba(0,0,0,.65); color:#fff; font-size:11px; padding:3px 4px; text-align:center; }
+    .image-controls { position:absolute; top:6px; right:6px; display:flex; flex-direction:column; gap:4px; z-index:5; }
+    .image-control-btn { background:rgba(0,0,0,.7); color:#fff; border:none; border-radius:4px; width:28px; height:28px; font-size:14px; cursor:pointer; }
+    .image-control-btn.delete { background:rgba(244,67,54,.95); }
+    .thumbnail.drag-over { outline:3px solid #2196F3; outline-offset:-3px; }
+
+    /* remarks */
+    .remarks-row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+    .remarks-label { min-width:64px; font-weight:700; font-size:12px; }
+    .remarks-input { flex:1; padding:6px 8px; border:1px solid #ddd; border-radius:6px; font-size:12px; }
+    .select-btn { padding:4px 10px; border:1px solid #ddd; border-radius:6px; background:#fff; cursor:pointer; font-size:12px; }
+    .select-btn.selected { background:#e3f2fd; border-color:#2196F3; }
+
+    /* order */
+    .treatment-order-container { background:#fff; border:1px solid #eee; border-radius:10px; padding:14px; }
+    .order-list { display:flex; flex-direction:column; gap:10px; }
+    .treatment-order-item { display:grid; grid-template-columns:30px 1.2fr 1fr 1.2fr auto; gap:8px; align-items:center; padding:10px; background:#f8f9fa; border:1px solid #e0e0e0; border-radius:8px; cursor:move; }
+    .order-number { background:#2196F3; color:#fff; width:28px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:50%; font-weight:700; }
+
+    /* action bar */
+    .action-bar { position:fixed; left:0; right:0; bottom:0; height:90px; background:#fff; border-top:1px solid #ddd; display:flex; justify-content:center; align-items:center; gap:10px; box-shadow:0 -2px 8px rgba(0,0,0,.06); z-index:1000; }
+    .btn { padding:10px 14px; border-radius:10px; border:1px solid #ddd; background:#fff; cursor:pointer; font-weight:700; }
+    .btn-primary { background:#2196F3; color:#fff; border-color:#2196F3; }
+    .btn-success { background:#4CAF50; color:#fff; border-color:#4CAF50; }
+    .btn-danger { background:#E53935; color:#fff; border-color:#E53935; }
+    .btn-warning { background:#FF9800; color:#fff; border-color:#FF9800; }
+    .btn-info { background:#17a2b8; color:#fff; border-color:#17a2b8; }
+
+    /* modal */
+    .modal { display:none; position:fixed; left:0; top:0; right:0; bottom:0; background:rgba(0,0,0,.5); z-index:2000; overflow-y:auto; }
+    .modal-content { background:#fff; width:92%; max-width:780px; margin:50px auto; border-radius:12px; padding:16px; position:relative; }
+    .close { position:absolute; right:16px; top:12px; font-size:26px; cursor:pointer; color:#999; }
+
+    /* tooth selector */
+    .tooth-grid { display:grid; grid-template-columns:repeat(8,1fr); gap:6px; }
+    .tooth { border:1px solid #ccc; border-radius:6px; padding:6px; text-align:center; cursor:pointer; user-select:none; }
+    .tooth.selected { background:#e3f2fd; border-color:#2196F3; font-weight:700; }
+
+    /* loading */
+    .loading { position:fixed; inset:0; background:rgba(0,0,0,.5); display:none; flex-direction:column; justify-content:center; align-items:center; z-index:3000; }
+    .spinner { border:4px solid #f3f3f3; border-top:4px solid #3498db; border-radius:50%; width:44px; height:44px; animation:spin 1s linear infinite; }
+    @keyframes spin { 0%{transform:rotate(0)} 100%{transform:rotate(360deg)} }
+    .loading p { color:#fff; margin-top:12px; font-size:15px; }
+
+    @media (max-width:1024px){
+      .main-container{ flex-direction:column; height:auto; }
+      .left-panel{ width:100%; height:auto; border-right:none; border-bottom:2px solid #ddd; }
+      .treatment-order-item{ grid-template-columns:30px 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="main-container">
+    <!-- Left panel: patient/basic -->
+    <div class="left-panel">
+      <div class="panel-header">
+        <h2>患者情報</h2>
+      </div>
+      <div class="section">
+        <div class="form-group">
+          <label>患者名</label>
+          <input id="patientName" type="text" placeholder="山田 太郎" />
+        </div>
+        <div class="form-group">
+          <label>患者ID</label>
+          <input id="patientId" type="text" placeholder="12345" />
+        </div>
+        <div class="row">
+          <div class="form-group">
+            <label>主訴（共通）</label>
+            <textarea id="chiefComplaint-common" placeholder="例）右下咬むと痛い"></textarea>
+          </div>
+        </div>
+        <div class="row">
+          <div class="form-group">
+            <label>全身疾患（共通）</label>
+            <textarea id="medicalHistory-common" placeholder="例）高血圧、糖尿病など"></textarea>
+          </div>
+          <div class="form-group">
+            <label>服用薬（共通）</label>
+            <textarea id="medications-common" placeholder="例）アムロジピン5mg"></textarea>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>注意事項（共通）</label>
+          <textarea id="precautions-common" placeholder="例）アレルギー、既往歴など"></textarea>
+        </div>
+      </div>
+
+      <div class="panel-header">
+        <h2>画像</h2>
+      </div>
+      <div class="section image-gallery">
+        <div class="gallery-container">
+
+          <!-- Intraoral 5 + Pano 1 -->
+          <div class="gallery-section" id="gallery-intra-pano">
+            <div class="gallery-title">
+              <h3>口腔内写真（5枚）＋パノラマ（1枚）</h3>
+              <input id="bulkUpload" type="file" accept="image/*" multiple />
+            </div>
+            <div class="thumbnail-grid intraoral5">
+              <div class="thumbnail intraoral-upper droptarget" data-type="intraoral" data-position="upper" draggable="true"><div class="thumbnail-label">上顎咬合面</div></div>
+              <div class="thumbnail intraoral-right droptarget" data-type="intraoral" data-position="right" draggable="true"><div class="thumbnail-label">右側方</div></div>
+              <div class="thumbnail intraoral-front droptarget" data-type="intraoral" data-position="front" draggable="true"><div class="thumbnail-label">正面</div></div>
+              <div class="thumbnail intraoral-left droptarget" data-type="intraoral" data-position="left" draggable="true"><div class="thumbnail-label">左側方</div></div>
+              <div class="thumbnail intraoral-lower droptarget" data-type="intraoral" data-position="lower" draggable="true"><div class="thumbnail-label">下顎咬合面</div></div>
+            </div>
+            <div class="thumbnail-grid pano1" style="margin-top:10px;">
+              <div class="thumbnail droptarget" data-type="xray" data-position="pano" draggable="true">
+                <div class="thumbnail-label">パノラマ</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dental 10 -->
+          <div class="gallery-section" id="gallery-dental10">
+            <div class="gallery-title">
+              <h3>デンタル10枚法</h3>
+              <small>（番号は右上→左上→左下→右下の順）</small>
+            </div>
+            <div class="thumbnail-grid dental10">
+              <!-- positions d1..d10 -->
+              <div class="thumbnail droptarget" data-type="dental10" data-position="d1" draggable="true"><div class="thumbnail-label">D1</div></div>
+              <div class="thumbnail droptarget" data-type="dental10" data-position="d2" draggable="true"><div class="thumbnail-label">D2</div></div>
+              <div class="thumbnail droptarget" data-type="dental10" data-position="d3" draggable="true"><div class="thumbnail-label">D3</div></div>
+              <div class="thumbnail droptarget" data-type="dental10" data-position="d4" draggable="true"><div class="thumbnail-label">D4</div></div>
+              <div class="thumbnail droptarget" data-type="dental10" data-position="d5" draggable="true"><div class="thumbnail-label">D5</div></div>
+              <div class="thumbnail droptarget" data-type="dental10" data-position="d6" draggable="true"><div class="thumbnail-label">D6</div></div>
+              <div class="thumbnail droptarget" data-type="dental10" data-position="d7" draggable="true"><div class="thumbnail-label">D7</div></div>
+              <div class="thumbnail droptarget" data-type="dental10" data-position="d8" draggable="true"><div class="thumbnail-label">D8</div></div>
+              <div class="thumbnail droptarget" data-type="dental10" data-position="d9" draggable="true"><div class="thumbnail-label">D9</div></div>
+              <div class="thumbnail droptarget" data-type="dental10" data-position="d10" draggable="true"><div class="thumbnail-label">D10</div></div>
+            </div>
+          </div>
+
+          <!-- Bitewing 4 -->
+          <div class="gallery-section" id="gallery-bw">
+            <div class="gallery-title">
+              <h3>バイトウィング（基本4枚）</h3>
+              <small>（上下左右の近心・遠心）</small>
+            </div>
+            <div class="thumbnail-grid bw4">
+              <div class="thumbnail droptarget" data-type="bw" data-position="bw1" draggable="true"><div class="thumbnail-label">BW1</div></div>
+              <div class="thumbnail droptarget" data-type="bw" data-position="bw2" draggable="true"><div class="thumbnail-label">BW2</div></div>
+              <div class="thumbnail droptarget" data-type="bw" data-position="bw3" draggable="true"><div class="thumbnail-label">BW3</div></div>
+              <div class="thumbnail droptarget" data-type="bw" data-position="bw4" draggable="true"><div class="thumbnail-label">BW4</div></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="panel-header">
+        <h2>データ管理</h2>
+      </div>
+      <div class="section">
+        <div class="row">
+          <button class="btn btn-info" onclick="showLoadModal()">保存データを開く</button>
+          <button class="btn" onclick="copyShareLink()">共有リンクをコピー</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right panel: plans/guide -->
+    <div class="right-panel">
+      <div class="panel-header">
+        <div class="tab-navigation">
+          <button class="tab-btn active" onclick="switchMainTab('guide', this)">立案ガイド</button>
+          <button class="tab-btn" onclick="switchMainTab('plan', this)">治療計画表</button>
+        </div>
+      </div>
+
+      <!-- Guide Tab -->
+      <div id="guide-tab" class="tab-content active">
+        <div class="section">
+          <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
+          <div id="progressText" class="progress-text">0% 完了</div>
+        </div>
+
+        <div class="section">
+          <h3 style="margin-bottom:8px; font-size:15px;">1. 患者背景の評価</h3>
+          <div class="row">
+            <label style="flex:0 0 140px; align-self:center;">治療期間の制約</label>
+            <input id="guide-period" type="text" placeholder="例）来春までに装置撤去希望" oninput="updateProgress()" />
+          </div>
+          <div class="row" style="margin-top:8px;">
+            <label style="flex:0 0 140px; align-self:center;">希望（審美・費用）</label>
+            <input id="guide-preference" type="text" placeholder="例）上顎前歯の見た目重視、保険希望 など" oninput="updateProgress()" />
+          </div>
+        </div>
+
+        <div class="section">
+          <h3 style="margin-bottom:8px; font-size:15px;">2. リスク・習癖</h3>
+          <div class="row">
+            <label style="flex:0 0 140px; align-self:center;">喫煙</label>
+            <input id="guide-smoking" type="text" placeholder="例）10本/日、禁煙指導予定" oninput="updateProgress()" />
+          </div>
+          <div class="row" style="margin-top:8px;">
+            <label style="flex:0 0 140px; align-self:center;">Bruxism等</label>
+            <input id="guide-brx" type="text" placeholder="例）スプリント検討" oninput="updateProgress()" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Plan Tab -->
+      <div id="plan-tab" class="tab-content">
+        <div class="plan-tabs">
+          <div class="plan-tab ideal active" data-plan="ideal" onclick="switchPlanTab('ideal')">理想案</div>
+          <div class="plan-tab standard" data-plan="standard" onclick="switchPlanTab('standard')">標準案</div>
+          <div class="plan-tab insurance" data-plan="insurance" onclick="switchPlanTab('insurance')">保険案</div>
+        </div>
+
+        <!-- plan bodies -->
+        <div id="plan-ideal" class="section plan-body"></div>
+        <div id="plan-standard" class="section plan-body" style="display:none;"></div>
+        <div id="plan-insurance" class="section plan-body" style="display:none;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modals -->
+  <div id="loadModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeLoadModal()">×</span>
+      <h3 style="margin-bottom:12px;">保存データ一覧</h3>
+      <div class="row" style="margin-bottom:10px;">
+        <input id="searchKeyword" type="text" placeholder="患者名/IDで検索" />
+        <button class="btn" onclick="loadFileList()">再読み込み</button>
+      </div>
+      <div id="fileList"></div>
+    </div>
+  </div>
+
+  <div id="toothModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeToothModal()">×</span>
+      <h3 style="margin-bottom:12px;">歯式表（FDI）</h3>
+      <div id="toothGrid" class="tooth-grid" style="margin-bottom:12px;"></div>
+      <div style="display:flex; gap:8px; justify-content:flex-end;">
+        <button class="btn" onclick="clearToothSelection()">クリア</button>
+        <button class="btn btn-primary" onclick="applyToothSelection()">適用</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading" class="loading">
+    <div class="spinner"></div>
+    <p>処理中…</p>
+  </div>
+
+  <!-- Action Bar -->
+  <div class="action-bar">
+    <button class="btn" onclick="saveDraftLocally()">ローカル一時保存</button>
+    <button class="btn btn-info" onclick="saveData()">Supabaseへ保存（Upsert）</button>
+    <button class="btn btn-success" onclick="generatePDF()">PDF作成</button>
+    <button class="btn btn-warning" onclick="exportJSON()">JSON書き出し</button>
+    <button class="btn btn-danger" onclick="resetForm()">リセット</button>
+  </div>
+
+  <script>
+    /* ======= Supabase ======= */
+    // ⚠️ anon キーを使います。RLSで適切に制限してください。
+    const SUPABASE_URL = 'https://raynrutpwrknxnhvlhjj.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJheW5ydXRwd3JrbnhuaHZsaGpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3MTI3OTEsImV4cCI6MjA3MDI4ODc5MX0.x9w69bPD5B5wGOH_krNlRS2b-NS5cr0RDF9iKjlPyK0';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const STORAGE_BUCKET = 'treatment-plans'; // 事前作成
+
+    /* ======= State ======= */
+    let activePlan = 'ideal';
+    const selectedTeeth = { ideal:{}, standard:{}, insurance:{} };
+    const customFields = { ideal:{}, standard:{}, insurance:{} };
+    const medicalManagement = { ideal:[], standard:[], insurance:[] };
+
+    // 画像情報は { url, path, rotate, flipH, flipV } を保存（pathはStorage削除用）
+    const uploadedImages = {
+      intraoral:{ upper:null, right:null, front:null, left:null, lower:null },
+      xray:{ pano:null },
+      dental10:{ d1:null,d2:null,d3:null,d4:null,d5:null,d6:null,d7:null,d8:null,d9:null,d10:null },
+      bw:{ bw1:null,bw2:null,bw3:null,bw4:null }
+    };
+
+    // 歯式モーダル用
+    let toothModalContext = { plan: null, key: null, selected: [] };
+
+    /* ======= UI Builders ======= */
+    function buildPlanBody(plan){
+      const el = document.getElementById(\`plan-\${plan}\`);
+      el.innerHTML = \`
+        <div class="treatment-header">
+          <div class="row">
+            <div class="form-group"><label>日付</label><input id="planDate-\${plan}" type="date" /></div>
+            <div class="form-group"><label>Dr</label><input id="planDoctorName-\${plan}" type="text" placeholder="担当医" /></div>
+            <div class="form-group"><label>DH</label><input id="planDhName-\${plan}" type="text" placeholder="担当DH" /></div>
+            <div class="form-group"><label>医管</label>
+              <div class="medical-buttons">
+                <button class="tag-btn" id="btn-mm-soi-\${plan}" onclick="toggleMedical('\${plan}','総医')">総医</button>
+                <button class="tag-btn" id="btn-mm-ikan-\${plan}" onclick="toggleMedical('\${plan}','医管')">医管</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3 style="font-size:15px; margin-bottom:8px;">治療計画表</h3>
+          \${buildTreatmentTable(plan)}
+        </div>
+
+        <div class="section">
+          <h3 style="font-size:15px; margin-bottom:8px;">備考/所見</h3>
+          \${buildRemarks(plan)}
+        </div>
+
+        <div class="section">
+          <h3 style="font-size:15px; margin-bottom:8px;">治療順序</h3>
+          \${buildOrder(plan)}
+        </div>
+      \`;
+      attachOrderDnD(plan);
+      autoToday(\`#planDate-\${plan}\`);
+    }
+
+    function buildTreatmentTable(plan){
+      const rows = [
+        ['CR','SRP'],
+        ['MTA','EXT'],
+        ['エクストルージョン','クラウンレングス'],
+        ['IN','ソケプリ'],
+        ['ENDO','インプラント'],
+        ['Cr','再生療法'],
+        ['Br','(カスタム)'],
+        ['OBS','(カスタム)'],
+        ['自由記入欄','NG']
+      ];
+      let html = '<table><tbody>';
+      rows.forEach((row,idx)=>{
+        const left = row[0], right = row[1];
+        const leftClass = left.length>8?'treatment-cell long':'treatment-cell';
+        const rightClass = right.length>8?'treatment-cell long':'treatment-cell';
+        html += '<tr>';
+        html += \`<td class="\${leftClass}">\${left}</td>\`;
+        html += \`<td class="tooth-cell">\${left==='自由記入欄' ? \`<textarea id="freeText-\${plan}" class="free-text-area" placeholder="自由記入" oninput="autoGrow(this)"></textarea>\` : buildCrossInput(plan,left)}</td>\`;
+        html += \`<td class="\${rightClass}">\${right}</td>\`;
+        html += \`<td class="tooth-cell">\${idx===6||idx===7? buildCrossInput(plan, idx===6?'customRow7':'customRow8') : (right==='NG'? \`<textarea id="ngText-\${plan}" class="ng-text-input" placeholder="NG詳細" oninput="autoGrow(this)"></textarea>\` : buildCrossInput(plan,right))}</td>\`;
+        if(idx===0){ html += \`<td id="remarks-cell-\${plan}" class="remarks-cell" rowspan="\${rows.length}" style="width:auto;">\${buildRemarksPreview(plan)}</td>\`; }
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      return html;
+    }
+
+    function buildCrossInput(plan, key){
+      const id = \`\${plan}-\${key}\`;
+      return \`
+        <div class="cross-wrap">
+          <div class="cross-display" id="cross-\${id}" onclick="cycleQuadrant('\${plan}','\${key}')">
+            <div class="quadrant tl" data-q="UL">UL</div>
+            <div class="quadrant tr" data-q="UR">UR</div>
+            <div class="quadrant bl" data-q="LL">LL</div>
+            <div class="quadrant br" data-q="LR">LR</div>
+          </div>
+          <button class="btn" onclick="openToothModal('\${plan}','\${key}')">歯式</button>
+        </div>
+      \`;
+    }
+
+    function buildRemarksPreview(plan){
+      return \`
+        <div class="patient-info-section">
+          <div><strong>主訴</strong>: <span id="pv-cc-\${plan}"></span></div>
+          <div><strong>全身疾患</strong>: <span id="pv-mh-\${plan}"></span></div>
+          <div><strong>服用薬</strong>: <span id="pv-med-\${plan}"></span></div>
+          <div><strong>注意事項</strong>: <span id="pv-pre-\${plan}"></span></div>
+        </div>
+        <div class="special-treatments" style="display:flex; gap:10px;">
+          <div style="flex:1; text-align:center;"><strong>implant</strong><div id="pv-imp-\${plan}"></div></div>
+          <div style="flex:1; text-align:center;"><strong>Hys</strong><div id="pv-hys-\${plan}"></div></div>
+        </div>
+        <div style="font-size:12px; line-height:1.5;">
+          <div><strong>Brx</strong>: <span id="pv-brx-\${plan}"></span></div>
+          <div><strong>P</strong>: <span id="pv-p-\${plan}"></span>　<strong>C</strong>: <span id="pv-c-\${plan}"></span>　<strong>ortho</strong>: <span id="pv-ortho-\${plan}"></span></div>
+          <div><strong>Clear tools</strong>: <span id="pv-clear-\${plan}"></span></div>
+          <div><strong>OHI方針</strong>: <span id="pv-ohi-\${plan}"></span></div>
+          <div><strong>備考</strong>: <span id="pv-notes-\${plan}"></span></div>
+        </div>`;
+    }
+
+    function buildRemarks(plan){
+      return \`
+        <div class="patient-info-section" style="margin-bottom:10px;">
+          <div class="row">
+            <div class="form-group"><label>主訴</label><textarea id="chiefComplaint-\${plan}" oninput="syncPreview('\${plan}'); autoGrow(this)"></textarea></div>
+          </div>
+          <div class="row">
+            <div class="form-group"><label>全身疾患</label><textarea id="medicalHistory-\${plan}" oninput="syncPreview('\${plan}'); autoGrow(this)"></textarea></div>
+            <div class="form-group"><label>服用薬</label><textarea id="medications-\${plan}" oninput="syncPreview('\${plan}'); autoGrow(this)"></textarea></div>
+          </div>
+          <div class="row">
+            <div class="form-group"><label>注意事項</label><textarea id="precautions-\${plan}" oninput="syncPreview('\${plan}'); autoGrow(this)"></textarea></div>
+          </div>
+        </div>
+        <div class="remarks-section">
+          <div class="remarks-row"><span class="remarks-label">Brx</span><input id="brx-\${plan}" class="remarks-input" oninput="syncPreview('\${plan}')" /></div>
+          <div class="remarks-row"><span class="remarks-label">P</span><input id="p-\${plan}" class="remarks-input" oninput="syncPreview('\${plan}')" /></div>
+          <div class="remarks-row"><span class="remarks-label">C</span><input id="c-\${plan}" class="remarks-input" oninput="syncPreview('\${plan}')" /></div>
+          <div class="remarks-row"><span class="remarks-label">ortho</span><input id="ortho-\${plan}" class="remarks-input" oninput="syncPreview('\${plan}')" /></div>
+          <div class="remarks-row"><span class="remarks-label">Clear tools</span><input id="clearTools-\${plan}" class="remarks-input" oninput="syncPreview('\${plan}')" placeholder="例）マウスピース矯正 等"/></div>
+          <div class="remarks-row"><span class="remarks-label">OHI方針</span><input id="ohiPolicy-\${plan}" class="remarks-input" oninput="syncPreview('\${plan}')" /></div>
+          <div class="remarks-row"><span class="remarks-label">備考</span><textarea id="remarksNotes-\${plan}" class="multi-line-input" oninput="syncPreview('\${plan}'); autoGrow(this)"></textarea></div>
+        </div>`;
+    }
+
+    function buildOrder(plan){
+      return \`
+        <div class="row" style="margin-bottom:10px;">
+          <button class="btn" onclick="addOrderItem('\${plan}')">行を追加</button>
+          <button class="btn" onclick="autoGenerateOrder('\${plan}')">自動並べ替え/補完</button>
+        </div>
+        <div id="treatmentOrderList-\${plan}" class="order-list"></div>`;
+    }
+
+    /* ======= Event/UI helpers ======= */
+    function switchMainTab(tab, btn){
+      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+      if(btn) btn.classList.add('active');
+      document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+      document.getElementById(`${tab}-tab`).classList.add('active');
+    }
+
+    function switchPlanTab(plan){
+      activePlan = plan;
+      document.querySelectorAll('.plan-tab').forEach(t=>t.classList.remove('active'));
+      document.querySelector(\`.plan-tab[data-plan="\${plan}"]\`).classList.add('active');
+      document.querySelectorAll('.plan-body').forEach(p=>p.style.display='none');
+      document.getElementById(\`plan-\${plan}\`).style.display='block';
+    }
+
+    function toggleMedical(plan, label){
+      const arr = medicalManagement[plan];
+      const idx = arr.indexOf(label);
+      if(idx>-1) arr.splice(idx,1); else arr.push(label);
+      document.getElementById(\`btn-mm-soi-\${plan}\`).classList.toggle('selected', arr.includes('総医'));
+      document.getElementById(\`btn-mm-ikan-\${plan}\`).classList.toggle('selected', arr.includes('医管'));
+    }
+
+    function autoToday(selector){
+      const el = document.querySelector(selector); if(!el) return;
+      if(!el.value){ const d = new Date(); const mm = (\`0\${d.getMonth()+1}\`).slice(-2); const dd = (\`0\${d.getDate()}\`).slice(-2); el.value = \`\${d.getFullYear()}-\${mm}-\${dd}\`; }
+    }
+
+    function autoGrow(t){ t.style.height='auto'; t.style.height=(t.scrollHeight)+'px'; }
+
+    function syncPreview(plan){
+      // 共通入力があれば、空欄の時に補完
+      const cc = document.getElementById(\`chiefComplaint-\${plan}\`);
+      const mh = document.getElementById(\`medicalHistory-\${plan}\`);
+      const med= document.getElementById(\`medications-\${plan}\`);
+      const pre= document.getElementById(\`precautions-\${plan}\`);
+      if(!cc.value) cc.value = document.getElementById('chiefComplaint-common')?.value || cc.value;
+      if(!mh.value) mh.value = document.getElementById('medicalHistory-common')?.value || mh.value;
+      if(!med.value) med.value = document.getElementById('medications-common')?.value || med.value;
+      if(!pre.value) pre.value = document.getElementById('precautions-common')?.value || pre.value;
+
+      document.getElementById(\`pv-cc-\${plan}\`).textContent = cc?.value || '';
+      document.getElementById(\`pv-mh-\${plan}\`).textContent = mh?.value || '';
+      document.getElementById(\`pv-med-\${plan}\`).textContent = med?.value || '';
+      document.getElementById(\`pv-pre-\${plan}\`).textContent = pre?.value || '';
+      document.getElementById(\`pv-brx-\${plan}\`).textContent = document.getElementById(\`brx-\${plan}\`)?.value || '';
+      document.getElementById(\`pv-p-\${plan}\`).textContent = document.getElementById(\`p-\${plan}\`)?.value || '';
+      document.getElementById(\`pv-c-\${plan}\`).textContent = document.getElementById(\`c-\${plan}\`)?.value || '';
+      document.getElementById(\`pv-ortho-\${plan}\`).textContent = document.getElementById(\`ortho-\${plan}\`)?.value || '';
+      document.getElementById(\`pv-clear-\${plan}\`).textContent = document.getElementById(\`clearTools-\${plan}\`)?.value || '';
+      document.getElementById(\`pv-ohi-\${plan}\`).textContent = document.getElementById(\`ohiPolicy-\${plan}\`)?.value || '';
+      document.getElementById(\`pv-notes-\${plan}\`).textContent = document.getElementById(\`remarksNotes-\${plan}\`)?.value || '';
+
+      updateProgress();
+    }
+
+    /* ======= Cross & Tooth Selector ======= */
+    function cycleQuadrant(plan, key){
+      const seq = ['UR','UL','LR','LL'];
+      const arr = selectedTeeth[plan][key]?.quadrants || [];
+      const next = seq[(arr.length) % seq.length];
+      let out = arr.slice();
+      if(arr.includes(next)) out = []; else out = [...arr, next];
+      setQuadrants(plan, key, out);
+    }
+
+    function setQuadrants(plan, key, quads){
+      if(!selectedTeeth[plan][key]) selectedTeeth[plan][key] = { quadrants:[], teeth:[] };
+      selectedTeeth[plan][key].quadrants = quads;
+      const cross = document.getElementById(\`cross-\${plan}-\${key}\`);
+      if(cross){
+        cross.querySelectorAll('.quadrant').forEach(q=>q.classList.remove('active'));
+        quads.forEach(qv=>{
+          const map = {UR:'.tr', UL:'.tl', LR:'.br', LL:'.bl'};
+          const el = cross.querySelector(map[qv]); if(el) el.classList.add('active');
+        });
+      }
+      // implant/Hys preview
+      if(key==='implant') document.getElementById(\`pv-imp-\${plan}\`).textContent = (selectedTeeth[plan][key].teeth||[]).join(', ') || quads.join(', ');
+      if(key==='Hys') document.getElementById(\`pv-hys-\${plan}\`).textContent = (selectedTeeth[plan][key].teeth||[]).join(', ') || quads.join(', ');
+    }
+
+    function openToothModal(plan, key){
+      toothModalContext = { plan, key, selected: (selectedTeeth[plan][key]?.teeth || []).slice() };
+      const grid = document.getElementById('toothGrid');
+      grid.innerHTML='';
+      const rows = [
+        ['18','17','16','15','14','13','12','11'],
+        ['21','22','23','24','25','26','27','28'],
+        ['48','47','46','45','44','43','42','41'],
+        ['31','32','33','34','35','36','37','38']
+      ];
+      rows.flat().forEach(tn=>{
+        const div = document.createElement('div');
+        div.className='tooth';
+        div.textContent=tn;
+        if(toothModalContext.selected.includes(tn)) div.classList.add('selected');
+        div.onclick=()=>{ div.classList.toggle('selected'); const t=div.textContent; const i=toothModalContext.selected.indexOf(t); if(i>-1) toothModalContext.selected.splice(i,1); else toothModalContext.selected.push(t); };
+        grid.appendChild(div);
+      });
+      document.getElementById('toothModal').style.display='block';
+    }
+    function closeToothModal(){ document.getElementById('toothModal').style.display='none'; }
+    function clearToothSelection(){ toothModalContext.selected = []; document.querySelectorAll('#toothGrid .tooth').forEach(el=>el.classList.remove('selected')); }
+    function applyToothSelection(){
+      const { plan, key, selected } = toothModalContext;
+      if(!selectedTeeth[plan][key]) selectedTeeth[plan][key] = { quadrants:[], teeth:[] };
+      selectedTeeth[plan][key].teeth = selected.slice();
+      // preview
+      if(key==='implant') document.getElementById(\`pv-imp-\${plan}\`).textContent = selected.join(', ');
+      if(key==='Hys') document.getElementById(\`pv-hys-\${plan}\`).textContent = selected.join(', ');
+      closeToothModal();
+    }
+
+    /* ======= Order ======= */
+    function addOrderItem(plan, initial={}){
+      const host = document.getElementById(\`treatmentOrderList-\${plan}\`);
+      const idx = host.children.length + 1;
+      const row = document.createElement('div');
+      row.className = 'treatment-order-item';
+      row.draggable = true;
+      row.innerHTML = \`
+        <div class="order-number">\${idx}</div>
+        <div><select class="treatment-select">
+          <option value="">— 選択 —</option>
+          <option>SRP</option><option>CR</option><option>MTA</option><option>EXT</option>
+          <option>ENDO</option><option>IN</option><option>Br</option><option>Cr</option>
+          <option>インプラント</option><option>再生療法</option><option>OBS</option>
+        </select></div>
+        <div><input class="teeth-input" type="text" placeholder="対象歯（例：16,26）"/></div>
+        <div><input class="notes-input" type="text" placeholder="備考"/></div>
+        <div><button class="btn btn-danger" onclick="this.closest('.treatment-order-item').remove(); renumber('\${plan}')">削除</button></div>
+      \`;
+      host.appendChild(row);
+      if(initial.treatment){ row.querySelector('.treatment-select').value = initial.treatment; }
+      if(initial.teeth){ row.querySelector('.teeth-input').value = initial.teeth; }
+      if(initial.notes){ row.querySelector('.notes-input').value = initial.notes; }
+      renumber(plan);
+
+      // DnD
+      row.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain',''); row.classList.add('dragging'); });
+      row.addEventListener('dragend', ()=>{ row.classList.remove('dragging'); renumber(plan); });
+      const list = host;
+      list.addEventListener('dragover', e=>{
+        e.preventDefault();
+        const dragging = list.querySelector('.dragging');
+        const items = [...list.querySelectorAll('.treatment-order-item:not(.dragging)')];
+        const next = items.find(item => e.clientY <= item.getBoundingClientRect().top + item.offsetHeight/2);
+        list.insertBefore(dragging, next||null);
+      });
+    }
+    function renumber(plan){
+      document.querySelectorAll(\`#treatmentOrderList-\${plan} .order-number\`).forEach((e,i)=>e.textContent=i+1);
+    }
+    function attachOrderDnD(plan){ /* handled in addOrderItem */ }
+    function autoGenerateOrder(plan){
+      const seq = [ 'SRP','CR','ENDO','IN','Cr','Br','OBS' ];
+      const host = document.getElementById(\`treatmentOrderList-\${plan}\`);
+      host.innerHTML='';
+      seq.forEach(t => addOrderItem(plan, {treatment:t}));
+    }
+
+    /* ======= Images: upload, controls, DnD between slots ======= */
+    document.getElementById('bulkUpload').addEventListener('change', async (e)=>{
+      const files = [...e.target.files];
+      for(const file of files){ await placeImageAuto(file); }
+    });
+
+    // basic validation
+    function validateImage(file){
+      const okTypes = ['image/jpeg','image/png','image/webp'];
+      const maxMB = 20;
+      if(!okTypes.includes(file.type)) { alert('JPEG/PNG/WebPのみ対応'); return false; }
+      if(file.size > maxMB*1024*1024){ alert(\`ファイルが大きすぎます（最大\${maxMB}MB）\`); return false; }
+      return true;
+    }
+
+    async function placeImageAuto(file){
+      if(!validateImage(file)) return;
+      const name = file.name.toLowerCase();
+      const map = [['upper','upper'],['right','right'],['front','front'],['left','left'],['lower','lower'],['pano','pano']];
+      let placed = false;
+      for(const [k,pos] of map){
+        if(name.includes(k)) { await setThumbnailImage(pos==='pano'?'xray':'intraoral', pos, file); placed=true; break; }
+      }
+      if(!placed){
+        const targets = [
+          ['intraoral','upper'],['intraoral','right'],['intraoral','front'],['intraoral','left'],['intraoral','lower'],
+          ['xray','pano'],
+          ['dental10','d1'],['dental10','d2'],['dental10','d3'],['dental10','d4'],['dental10','d5'],['dental10','d6'],['dental10','d7'],['dental10','d8'],['dental10','d9'],['dental10','d10'],
+          ['bw','bw1'],['bw','bw2'],['bw','bw3'],['bw','bw4']
+        ];
+        for(const [type,position] of targets){
+          const tn = document.querySelector(\`.thumbnail[data-type="\${type}"][data-position="\${position}"]\`);
+          if(tn && !tn.querySelector('img')) { await setThumbnailImage(type, position, file); break; }
+        }
+      }
+    }
+
+    async function setThumbnailImage(type, position, file){
+      const tn = document.querySelector(\`.thumbnail[data-type="\${type}"][data-position="\${position}"]\`);
+      if(!tn) return;
+      const imgInfo = await uploadToStorage(file);
+      if(imgInfo){
+        applyThumb(tn, type, position, imgInfo);
+      }
+    }
+
+    function applyThumb(tn, type, position, imgInfo){
+      tn.innerHTML = '';
+      const img = document.createElement('img');
+      img.src = imgInfo.url; img.draggable=false;
+      tn.appendChild(img);
+      tn.classList.add('has-image');
+      const key = \`\${type}|\${position}\`;
+      uploadedImages[type][position] = { ...imgInfo, rotate:0, flipH:false, flipV:false };
+
+      addImageControls(tn, type, position, img);
+      setupThumbDnD(tn);
+    }
+
+    function addImageControls(tn, type, position, img){
+      const box = document.createElement('div'); box.className='image-controls';
+      const rot = document.createElement('button'); rot.className='image-control-btn'; rot.textContent='⟳'; rot.title='回転';
+      const fh = document.createElement('button'); fh.className='image-control-btn'; fh.textContent='⇋'; fh.title='左右反転';
+      const fv = document.createElement('button'); fv.className='image-control-btn'; fv.textContent='⇅'; fv.title='上下反転';
+      const del = document.createElement('button'); del.className='image-control-btn delete'; del.textContent='✕'; del.title='削除';
+      rot.onclick = ()=>{ const it = uploadedImages[type][position]; it.rotate = (it.rotate + 90)%360; applyImageTransform(img, it); };
+      fh.onclick = ()=>{ const it = uploadedImages[type][position]; it.flipH = !it.flipH; applyImageTransform(img, it); };
+      fv.onclick = ()=>{ const it = uploadedImages[type][position]; it.flipV = !it.flipV; applyImageTransform(img, it); };
+      del.onclick = ()=>{ tn.innerHTML=''; tn.classList.remove('has-image'); uploadedImages[type][position]=null; };
+      box.append(rot, fh, fv, del); tn.appendChild(box);
+
+      // 初期transform
+      const it = uploadedImages[type][position]; applyImageTransform(img, it);
+    }
+
+    function applyImageTransform(img, it){
+      const t = it || {rotate:0, flipH:false, flipV:false};
+      const scaleX = t.flipH ? -1 : 1; const scaleY = t.flipV ? -1 : 1;
+      img.style.transform = \`rotate(\${t.rotate}deg) scale(\${scaleX}, \${scaleY})\`;
+    }
+
+    function setupThumbDnD(tn){
+      tn.setAttribute('draggable','true');
+      tn.addEventListener('dragstart', e=>{
+        tn.classList.add('dragging');
+        e.dataTransfer.setData('text/plain', JSON.stringify({ type: tn.dataset.type, position: tn.dataset.position }));
+      });
+      tn.addEventListener('dragend', ()=> tn.classList.remove('dragging'));
+      document.querySelectorAll('.droptarget').forEach(slot=>{
+        slot.addEventListener('dragover', e=>{ e.preventDefault(); slot.classList.add('drag-over'); });
+        slot.addEventListener('dragleave', ()=> slot.classList.remove('drag-over'));
+        slot.addEventListener('drop', e=>{
+          e.preventDefault();
+          slot.classList.remove('drag-over');
+          const from = JSON.parse(e.dataTransfer.getData('text/plain'));
+          const to = { type: slot.dataset.type, position: slot.dataset.position };
+          swapThumbnails(from, to);
+        });
+      });
+    }
+
+    function swapThumbnails(from, to){
+      if(from.type===to.type && from.position===to.position) return;
+      const fromTn = document.querySelector(\`.thumbnail[data-type="\${from.type}"][data-position="\${from.position}"]\`);
+      const toTn   = document.querySelector(\`.thumbnail[data-type="\${to.type}"][data-position="\${to.position}"]\`);
+      const fromInfo = uploadedImages[from.type][from.position];
+      const toInfo   = uploadedImages[to.type][to.position];
+
+      // Clear both
+      [fromTn,toTn].forEach(tn=>{ if(tn){ tn.innerHTML=''; tn.classList.remove('has-image'); } });
+
+      // Apply swapped
+      if(toInfo){ applyThumb(fromTn, from.type, from.position, toInfo); }
+      if(fromInfo){ applyThumb(toTn, to.type, to.position, fromInfo); }
+    }
+
+    async function uploadToStorage(file){
+      const pid = (document.getElementById('patientId').value || 'unknown').replace(/[^a-zA-Z0-9_-]/g,'_');
+      const ts = Date.now();
+      const path = \`\${pid}/images/\${ts}_\${file.name}\`;
+      const { data, error } = await supabase.storage.from(STORAGE_BUCKET).upload(path, file, { upsert:false });
+      if(error){ alert('画像アップロード失敗: '+error.message); return null; }
+      const { data:pub } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+      return { url: pub?.publicUrl || '', path };
+    }
+
+    /* ======= Progress ======= */
+    function updateProgress(){
+      const fields = [
+        'patientName','patientId','guide-period','guide-preference','guide-smoking','guide-brx',
+        'chiefComplaint-ideal','medicalHistory-ideal','medications-ideal','precautions-ideal',
+        'chiefComplaint-standard','medicalHistory-standard','medications-standard','precautions-standard',
+        'chiefComplaint-insurance','medicalHistory-insurance','medications-insurance','precautions-insurance'
+      ];
+      let filled=0;
+      fields.forEach(id=>{ const v=document.getElementById(id); if(v && v.value && v.value.trim().length>0) filled++; });
+      const total = fields.length || 1;
+      const pct = Math.round(filled/total*100);
+      const fill = document.getElementById('progressFill'); if(fill) fill.style.width = pct+'%';
+      const txt = document.getElementById('progressText'); if(txt) txt.textContent = pct+'% 完了';
+    }
+
+    /* ======= Save/Load (Upsert), Delete with storage cleanup ======= */
+    function collectPlanData(plan){
+      const patientInfo = {
+        chiefComplaint: document.getElementById(\`chiefComplaint-\${plan}\`)?.value || '',
+        medicalHistory: document.getElementById(\`medicalHistory-\${plan}\`)?.value || '',
+        medications: document.getElementById(\`medications-\${plan}\`)?.value || '',
+        precautions: document.getElementById(\`precautions-\${plan}\`)?.value || ''
+      };
+      const treatmentPlan = {
+        date: document.getElementById(\`planDate-\${plan}\`)?.value || '',
+        doctorName: document.getElementById(\`planDoctorName-\${plan}\`)?.value || '',
+        dhName: document.getElementById(\`planDhName-\${plan}\`)?.value || '',
+        medicalManagement: medicalManagement[plan] || []
+      };
+      const treatmentOrder = [];
+      document.querySelectorAll(\`#treatmentOrderList-\${plan} .treatment-order-item\`).forEach(item=>{
+        const treatment = item.querySelector('.treatment-select').value;
+        const teeth = item.querySelector('.teeth-input').value;
+        const notes = item.querySelector('.notes-input').value;
+        if(treatment){ treatmentOrder.push({treatment, teeth, notes}); }
+      });
+      return {
+        patientInfo,
+        treatmentPlan,
+        treatments: selectedTeeth[plan] || {},
+        freeText: document.getElementById(\`freeText-\${plan}\`)?.value || '',
+        treatmentOrder,
+        remarks: collectRemarksData(plan),
+        customFields: customFields[plan] || {}
+      };
+    }
+
+    function collectRemarksData(plan){
+      return {
+        brx: document.getElementById(\`brx-\${plan}\`)?.value || '',
+        p: document.getElementById(\`p-\${plan}\`)?.value || '',
+        c: document.getElementById(\`c-\${plan}\`)?.value || '',
+        ortho: document.getElementById(\`ortho-\${plan}\`)?.value || '',
+        clearTools: document.getElementById(\`clearTools-\${plan}\`)?.value || '',
+        ohiPolicy: document.getElementById(\`ohiPolicy-\${plan}\`)?.value || '',
+        notes: document.getElementById(\`remarksNotes-\${plan}\`)?.value || '',
+        ng: document.getElementById(\`ngText-\${plan}\`)?.value || ''
+      };
+    }
+
+    async function saveData(){
+      const patientInfo = { name: document.getElementById('patientName').value, id: document.getElementById('patientId').value };
+      if(!patientInfo.name || !patientInfo.id){ alert('患者名とIDを入力してください'); return; }
+      const plans = {}; ['ideal','standard','insurance'].forEach(p=>{ plans[p] = collectPlanData(p); });
+      const planningGuideData = {
+        period: document.getElementById('guide-period').value,
+        preference: document.getElementById('guide-preference').value,
+        smoking: document.getElementById('guide-smoking').value,
+        brx: document.getElementById('guide-brx').value
+      };
+      const data = {
+        patientInfo, patientName:patientInfo.name, patientId:patientInfo.id, plans,
+        images: uploadedImages, activePlan, planningGuide:planningGuideData,
+        date: new Date().toLocaleDateString('ja-JP')
+      };
+      try{
+        document.getElementById('loading').style.display='flex';
+        // Upsert by patient_id (unique index required)
+        const { data: saved, error } = await supabase.from('treatment_plans').upsert([{
+          patient_name: patientInfo.name,
+          patient_id: patientInfo.id,
+          plan_data: data
+        }], { onConflict: 'patient_id' }).select();
+        document.getElementById('loading').style.display='none';
+        if(error){ alert('保存に失敗: '+error.message); return; }
+        const id = saved?.[0]?.id;
+        const shareUrl = \`\${location.origin}\${location.pathname}?id=\${id}\`;
+        try {
+          await navigator.clipboard.writeText(shareUrl);
+        } catch(e) { /* ignore */ }
+        history.replaceState(null, '', shareUrl);
+        alert('保存しました！\\n共有リンクをURLバーに適用しました。');
+      }catch(e){
+        document.getElementById('loading').style.display='none';
+        alert('エラー: '+e.message);
+      }
+    }
+
+    function saveDraftLocally(){
+      const key = 'treatment_plan_draft';
+      const plans = {}; ['ideal','standard','insurance'].forEach(p=>{ plans[p] = collectPlanData(p); });
+      const obj = {
+        patientName: document.getElementById('patientName').value,
+        patientId: document.getElementById('patientId').value,
+        plans,
+        images: uploadedImages,
+        guide: {
+          period: document.getElementById('guide-period').value,
+          preference: document.getElementById('guide-preference').value,
+          smoking: document.getElementById('guide-smoking').value,
+          brx: document.getElementById('guide-brx').value
+        },
+        activePlan
+      };
+      localStorage.setItem(key, JSON.stringify(obj));
+      alert('ローカルに一時保存しました（このPC/ブラウザ限定）');
+    }
+
+    async function loadData(id){
+      document.getElementById('loading').style.display='flex';
+      const { data, error } = await supabase.from('treatment_plans').select('*').eq('id', id).single();
+      document.getElementById('loading').style.display='none';
+      if(error){ alert('読み込み失敗: '+error.message); return; }
+      if(!data?.plan_data){ alert('データが見つかりません'); return; }
+      applyAll(data.plan_data);
+      closeLoadModal();
+      alert('データを読み込みました');
+    }
+
+    function applyAll(d){
+      // patient
+      document.getElementById('patientName').value = d.patientInfo?.name || d.patientName || '';
+      document.getElementById('patientId').value = d.patientInfo?.id || d.patientId || '';
+      // guide
+      document.getElementById('guide-period').value = d.planningGuide?.period || '';
+      document.getElementById('guide-preference').value = d.planningGuide?.preference || '';
+      document.getElementById('guide-smoking').value = d.planningGuide?.smoking || '';
+      document.getElementById('guide-brx').value = d.planningGuide?.brx || '';
+      // plans
+      ['ideal','standard','insurance'].forEach(p=>{
+        const pd = d.plans?.[p] || {};
+        document.getElementById(\`planDate-\${p}\`).value = pd.treatmentPlan?.date || '';
+        document.getElementById(\`planDoctorName-\${p}\`).value = pd.treatmentPlan?.doctorName || '';
+        document.getElementById(\`planDhName-\${p}\`).value = pd.treatmentPlan?.dhName || '';
+        medicalManagement[p] = pd.treatmentPlan?.medicalManagement || [];
+        document.getElementById(\`btn-mm-soi-\${p}\`).classList.toggle('selected', medicalManagement[p].includes('総医'));
+        document.getElementById(\`btn-mm-ikan-\${p}\`).classList.toggle('selected', medicalManagement[p].includes('医管'));
+        // remarks
+        document.getElementById(\`chiefComplaint-\${p}\`).value = pd.patientInfo?.chiefComplaint || '';
+        document.getElementById(\`medicalHistory-\${p}\`).value = pd.patientInfo?.medicalHistory || '';
+        document.getElementById(\`medications-\${p}\`).value = pd.patientInfo?.medications || '';
+        document.getElementById(\`precautions-\${p}\`).value = pd.patientInfo?.precautions || '';
+        document.getElementById(\`brx-\${p}\`).value = pd.remarks?.brx || '';
+        document.getElementById(\`p-\${p}\`).value = pd.remarks?.p || '';
+        document.getElementById(\`c-\${p}\`).value = pd.remarks?.c || '';
+        document.getElementById(\`ortho-\${p}\`).value = pd.remarks?.ortho || '';
+        document.getElementById(\`clearTools-\${p}\`).value = pd.remarks?.clearTools || '';
+        document.getElementById(\`ohiPolicy-\${p}\`).value = pd.remarks?.ohiPolicy || '';
+        document.getElementById(\`remarksNotes-\${p}\`).value = pd.remarks?.notes || '';
+        document.getElementById(\`ngText-\${p}\`).value = pd.remarks?.ng || '';
+        // selected teeth & quadrants
+        selectedTeeth[p] = pd.treatments || {};
+        for(const key in selectedTeeth[p]){
+          const quads = selectedTeeth[p][key]?.quadrants || [];
+          setQuadrants(p, key, quads);
+        }
+        // order
+        const list = document.getElementById(\`treatmentOrderList-\${p}\`); list.innerHTML='';
+        (pd.treatmentOrder||[]).forEach(it=>addOrderItem(p, it));
+        syncPreview(p);
+      });
+      // images
+      // Clear all slots first
+      document.querySelectorAll('.thumbnail').forEach(tn=>{ tn.innerHTML = '<div class="thumbnail-label">'+(tn.querySelector('.thumbnail-label')?.textContent||'')+'</div>'; tn.classList.remove('has-image'); });
+      const imgs = d.images || {};
+      // helper to apply an object {url,path,rotate,flipH,flipV}
+      function applyIf(type, position, info){
+        const tn = document.querySelector(\`.thumbnail[data-type="\${type}"][data-position="\${position}"]\`);
+        if(info && tn){
+          uploadedImages[type][position] = info;
+          tn.innerHTML='';
+          const img = document.createElement('img'); img.src=info.url; img.draggable=false; tn.appendChild(img); tn.classList.add('has-image');
+          addImageControls(tn, type, position, img);
+          applyImageTransform(img, info);
+          setupThumbDnD(tn);
+        } else {
+          uploadedImages[type][position] = null;
+        }
+      }
+      // intraoral + pano
+      if(imgs.intraoral){
+        ['upper','right','front','left','lower'].forEach(pos=>applyIf('intraoral', pos, imgs.intraoral[pos]));
+      }
+      if(imgs.xray){ applyIf('xray','pano', imgs.xray.pano); }
+      // dental10
+      if(imgs.dental10){
+        ['d1','d2','d3','d4','d5','d6','d7','d8','d9','d10'].forEach(pos=>applyIf('dental10', pos, imgs.dental10[pos]));
+      }
+      // bw
+      if(imgs.bw){
+        ['bw1','bw2','bw3','bw4'].forEach(pos=>applyIf('bw', pos, imgs.bw[pos]));
+      }
+
+      // active plan
+      if(d.activePlan) switchPlanTab(d.activePlan);
+
+      // textarea autosize
+      document.querySelectorAll('textarea').forEach(t=>autoGrow(t));
+      updateProgress();
+    }
+
+    async function loadFileList(){
+      const keyword = (document.getElementById('searchKeyword').value||'').trim();
+      document.getElementById('loading').style.display='flex';
+      let query = supabase.from('treatment_plans').select('id,patient_name,patient_id,created_at').order('created_at', { ascending:false }).limit(50);
+      if(keyword){
+        query = query.or(\`patient_name.ilike.%\${keyword}%,patient_id.ilike.%\${keyword}%\`);
+      }
+      const { data, error } = await query;
+      document.getElementById('loading').style.display='none';
+      if(error){ alert('リスト取得失敗: '+error.message); return; }
+      const container = document.getElementById('fileList');
+      if(!data || data.length===0){ container.innerHTML = '<p style="text-align:center; color:#999;">データがありません</p>'; return; }
+      container.innerHTML = data.map(d=>\`
+        <div class="file-item" style="display:flex; align-items:center; justify-content:space-between; padding:10px; border:1px solid #eee; border-radius:8px; margin-bottom:8px; background:#fff;">
+          <div class="file-item-info"><strong>\${d.patient_name}</strong> (ID: \${d.patient_id})<br/><small>\${new Date(d.created_at).toLocaleString('ja-JP')}</small></div>
+          <div class="file-item-actions" style="display:flex; gap:8px;">
+            <button class="btn btn-primary" onclick="loadData('\${d.id}')">読み込み</button>
+            <button class="btn btn-danger" onclick="deleteFile('\${d.id}')">削除</button>
+          </div>
+        </div>\`).join('');
+    }
+
+    async function deleteFile(id){
+      if(!confirm('このデータを削除しますか？（画像も削除）')) return;
+      // 先にplan_dataを取得してストレージ削除
+      document.getElementById('loading').style.display='flex';
+      const { data: rec, error: e1 } = await supabase.from('treatment_plans').select('plan_data').eq('id', id).single();
+      if(e1){ document.getElementById('loading').style.display='none'; alert('削除前取得に失敗: '+e1.message); return; }
+      const imgs = rec?.plan_data?.images || {};
+      const paths = [];
+      function pushPath(obj){ if(obj && obj.path) paths.push(obj.path); }
+      if(imgs.intraoral){ Object.values(imgs.intraoral).forEach(pushPath); }
+      if(imgs.xray){ pushPath(imgs.xray.pano); }
+      if(imgs.dental10){ Object.values(imgs.dental10).forEach(pushPath); }
+      if(imgs.bw){ Object.values(imgs.bw).forEach(pushPath); }
+      if(paths.length){
+        await supabase.storage.from(STORAGE_BUCKET).remove(paths);
+      }
+      // レコード削除
+      const { error } = await supabase.from('treatment_plans').delete().eq('id', id);
+      document.getElementById('loading').style.display='none';
+      if(error){ alert('削除に失敗: '+error.message); return; }
+      alert('削除しました');
+      await loadFileList();
+    }
+
+    function showLoadModal(){ document.getElementById('loadModal').style.display='block'; loadFileList(); }
+    function closeLoadModal(){ document.getElementById('loadModal').style.display='none'; }
+
+    function copyShareLink(){
+      const id = new URLSearchParams(location.search).get('id');
+      const url = id ? location.href : null;
+      if(!url){ alert('まず保存してID付きURLを取得してください。'); return; }
+      navigator.clipboard.writeText(url).then(()=>alert('URLをコピーしました')).catch(()=>{ prompt('コピーできない場合は手動で選択→コピーしてください', url); });
+    }
+
+    function exportJSON(){
+      const plans = {}; ['ideal','standard','insurance'].forEach(p=>{ plans[p] = collectPlanData(p); });
+      const patientNameEl = document.getElementById('patientName');
+      const patientIdEl = document.getElementById('patientId');
+      const guidePeriodEl = document.getElementById('guide-period');
+      const guidePreferenceEl = document.getElementById('guide-preference');
+      const guideSmokingEl = document.getElementById('guide-smoking');
+      const guideBrxEl = document.getElementById('guide-brx');
+
+      const patientInfo = { name: patientNameEl?.value || '', id: patientIdEl?.value || '' };
+      const data = {
+        patientInfo,
+        plans,
+        images: uploadedImages,
+        planningGuide: {
+          period: guidePeriodEl?.value || '',
+          preference: guidePreferenceEl?.value || '',
+          smoking: guideSmokingEl?.value || '',
+          brx: guideBrxEl?.value || ''
+        },
+        activePlan
+      };
+      const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `plan_${patientInfo.id||'noid'}.json`; a.click(); URL.revokeObjectURL(a.href);
+    }
+
+    function resetForm(){ if(confirm('全てクリアしますか？')) location.reload(); }
+
+    /* ======= PDF: include images gallery + active plan ======= */
+    async function generatePDF(){
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit:'pt', format:'a4' });
+
+      const container = document.createElement('div');
+      container.style.width = '794px';
+      container.style.padding = '16px';
+      container.style.background = '#fff';
+      container.innerHTML = \`
+        <h1 style="text-align:center; font-size:18px; margin:0 0 8px;">歯科治療計画書</h1>
+        <div style="margin-bottom:8px;">日付：\${new Date().toLocaleDateString('ja-JP')}　患者：\${patientName.value}（ID:\${patientId.value}）　プラン：\${activePlan}</div>
+      \`;
+
+      // 画像ギャラリー（6 + 10 + 4）を静的に複製
+      const galleries = document.createElement('div');
+      const g1 = document.getElementById('gallery-intra-pano').cloneNode(true);
+      const g2 = document.getElementById('gallery-dental10').cloneNode(true);
+      const g3 = document.getElementById('gallery-bw').cloneNode(true);
+      // 操作ボタンやinput除去
+      [g1,g2,g3].forEach(g=>{
+        g.querySelectorAll('input,button').forEach(el=>el.remove());
+        // 画像transform反映済みの見た目を使用
+      });
+      galleries.appendChild(g1); galleries.appendChild(g2); galleries.appendChild(g3);
+      container.appendChild(galleries);
+
+      // アクティブプランのDOM
+      const planDom = document.getElementById(\`plan-\${activePlan}\`).cloneNode(true);
+      planDom.querySelectorAll('button').forEach(b=>b.remove());
+      container.appendChild(planDom);
+      document.body.appendChild(container);
+
+      const canvas = await html2canvas(container, { scale:2, useCORS:true });
+      const imgData = canvas.toDataURL('image/png');
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const ratio = Math.min(pageWidth / canvas.width, pageHeight / canvas.height);
+      const imgWidth = canvas.width * ratio;
+      const imgHeight = canvas.height * ratio;
+      doc.addImage(imgData, 'PNG', (pageWidth - imgWidth)/2, 20, imgWidth, imgHeight);
+      doc.save(\`治療計画書_\${patientName.value || 'noname'}_\${patientId.value || 'noid'}.pdf\`);
+      container.remove();
+    }
+
+    /* ======= Init ======= */
+    ['ideal','standard','insurance'].forEach(buildPlanBody);
+
+    // Setup all droptargets for DnD initially (even empty ones)
+    document.querySelectorAll('.droptarget').forEach(setupThumbDnD);
+
+    // URLクエリ ?id= で自動ロード
+    (async ()=>{
+      const id = new URLSearchParams(location.search).get('id');
+      if(id){ await loadData(id); }
+    })();
+
+    // Sync progress on common fields
+    ['chiefComplaint-common','medicalHistory-common','medications-common','precautions-common'].forEach(id=>{
+      const el=document.getElementById(id); if(el) el.addEventListener('input', ()=>{ ['ideal','standard','insurance'].forEach(syncPreview); updateProgress(); });
+    });
+  </script>
+</body>
+</html>
